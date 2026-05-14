@@ -35,6 +35,11 @@ function getPlaceholder(field: InstructionFieldMeta): string {
   }
 }
 
+function toFieldLabel(fieldName: string): string {
+  const withSpaces = fieldName.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+  return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
+}
+
 function createInitialValues(fields: InstructionFieldMeta[]): InstructionFormValues {
   return fields.reduce<InstructionFormValues>((accumulator, field) => {
     accumulator[field.name] = field.type === "boolean" ? false : "";
@@ -73,6 +78,12 @@ export function InstructionFormCard({
             {instruction.displayName}
           </h3>
           <p className="mt-1 text-xs text-slate-500">{instruction.builderName}</p>
+          <p className="mt-1 text-xs text-slate-400">
+            {inputFields.length} input field{inputFields.length > 1 ? "s" : ""}
+            {signerFields.length > 0
+              ? ` | ${signerFields.length} signer account${signerFields.length > 1 ? "s" : ""}`
+              : ""}
+          </p>
         </div>
       </div>
 
@@ -83,12 +94,16 @@ export function InstructionFormCard({
           void onExecute(instruction, values);
         }}
       >
+        {signerFields.length > 0 ? (
+          <p className="label-base">Signer Accounts</p>
+        ) : null}
+
         {signerFields.map((field) => (
           <div
             key={`${instruction.name}-${field.name}`}
-            className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+            className="space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3"
           >
-            <p className="label-base">{field.name}</p>
+            <p className="label-base">{toFieldLabel(field.name)}</p>
             <p className="mt-1 text-sm text-slate-600">
               Uses connected wallet signer{field.optional ? " (optional)" : ""}.
             </p>
@@ -98,14 +113,21 @@ export function InstructionFormCard({
           </div>
         ))}
 
+        {inputFields.length > 0 ? (
+          <p className="label-base">Input Fields</p>
+        ) : null}
+
         {inputFields.map((field) => {
           const inputId = `${instruction.name}-${field.name}`;
 
           if (field.type === "boolean") {
             return (
-              <div key={inputId} className="space-y-1">
-                <label htmlFor={inputId} className="label-base">
-                  {field.name}
+              <div
+                key={inputId}
+                className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3"
+              >
+                <label htmlFor={inputId} className="label-base block">
+                  {toFieldLabel(field.name)}
                   {field.optional ? " (optional)" : ""}
                 </label>
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
@@ -125,20 +147,25 @@ export function InstructionFormCard({
                     <span className="text-sm text-slate-700">True / False</span>
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-400">Type: {field.rawType}</p>
+                <p className="text-[11px] text-slate-400">
+                  Key: <code>{field.name}</code> | Type: {field.rawType}
+                </p>
               </div>
             );
           }
 
           return (
-            <div key={inputId} className="space-y-1">
-              <label htmlFor={inputId} className="label-base">
-                {field.name}
+            <div
+              key={inputId}
+              className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3"
+            >
+              <label htmlFor={inputId} className="label-base block">
+                {toFieldLabel(field.name)}
                 {field.optional ? " (optional)" : ""}
               </label>
               <input
                 id={inputId}
-                className="input-base max-w-full lg:max-w-xl"
+                className="input-base block w-full"
                 inputMode={field.type === "number" ? "numeric" : "text"}
                 placeholder={getPlaceholder(field)}
                 value={(values[field.name] as string) ?? ""}
@@ -149,7 +176,9 @@ export function InstructionFormCard({
                   }))
                 }
               />
-              <p className="text-[11px] text-slate-400">Type: {field.rawType}</p>
+              <p className="text-[11px] text-slate-400">
+                Key: <code>{field.name}</code> | Type: {field.rawType}
+              </p>
               {field.name.toLowerCase().includes("addresses") ? (
                 <p className="text-[11px] text-slate-400">
                   Comma or semicolon separated addresses are accepted.
