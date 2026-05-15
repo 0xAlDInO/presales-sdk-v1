@@ -1,13 +1,13 @@
 # Presales SDK Dashboard
 
-Interface Next.js pour interagir visuellement avec un SDK TypeScript genere pour le programme Solana `presalesSmartContract`.
+Interface Next.js pour interagir visuellement avec un SDK TypeScript généré pour le programme Solana `presalesSmartContract`.
 
 Le projet permet de:
 - connecter un wallet (Phantom ou Solflare),
-- choisir le reseau (`devnet` / `mainnet-beta`),
-- executer les instructions generees du smart contract,
-- visualiser les retours de transaction (signature, logs, erreurs custom, trace d'instructions),
-- inspecter et decoder les comptes on-chain du programme.
+- choisir le réseau (`devnet` / `mainnet-beta`),
+- exécuter les instructions générées du smart contract,
+- visualiser les retours de transaction (signature, logs, erreurs custom, trace d’instructions),
+- inspecter et décoder les comptes on-chain du programme.
 
 ## Stack technique
 
@@ -15,11 +15,11 @@ Le projet permet de:
 - TypeScript
 - Tailwind CSS
 - Solana Wallet Adapter
-- `@solana/kit` + SDK genere dans `src/generated`
+- `@solana/kit` + SDK généré dans `src/generated`
 
-## Prerequis
+## Prérequis
 
-- Node.js 18+ (recommande: 20+)
+- Node.js 18+ (recommandé: 20+)
 - npm
 - Un wallet Solana navigateur (Phantom ou Solflare)
 - (Optionnel) PostgreSQL + `psql` pour initialiser la table locale de suivi des presales
@@ -32,7 +32,7 @@ npm install
 
 ## Configuration environnement
 
-Creer votre fichier `.env` a partir de l'exemple:
+Créer votre fichier `.env` à partir de l’exemple:
 
 ```bash
 cp .env.example .env
@@ -46,14 +46,13 @@ POSTGRES_PORT=5432
 POSTGRES_DB=presales_sdk
 POSTGRES_USER=presales_app
 POSTGRES_PASSWORD=change_me_strong_password
-DATABASE_URL=postgres://presales_app:change_me_strong_password@localhost:5432/presales_sdk
 ```
 
-Note: la base n'est pas obligatoire pour lancer l'UI. Elle est utile si vous voulez preparer la persistance SQL via le script `db:init`.
+Note: la base n’est pas obligatoire pour lancer l’UI. Elle est utile si vous voulez préparer la persistance SQL via le script `db:init`.
 
 ## Lancer le projet
 
-Developpement:
+Développement:
 
 ```bash
 npm run dev
@@ -74,24 +73,24 @@ npm run start
 
 ## Scripts npm
 
-- `npm run dev`: lance Next.js en mode developpement
+- `npm run dev`: lance Next.js en mode développement
 - `npm run build`: build production
-- `npm run start`: demarre le serveur Next.js en mode production
+- `npm run start`: démarre le serveur Next.js en mode production
 - `npm run lint`: lance le lint Next.js
-- `npm run typecheck`: verifie les types TypeScript sans generation
-- `npm run db:init`: execute `db/postgres/init.sql` via `psql` et `DATABASE_URL`
+- `npm run typecheck`: vérifie les types TypeScript sans génération
+- `npm run db:init`: exécute `db/postgres/init.sql` via `psql` et les variables `POSTGRES_*`
 
-## Fonctionnalites principales
+## Fonctionnalités principales
 
-### 1) Wallet & reseau
+### 1) Wallet & réseau
 
-- Connexion/deconnexion wallet.
-- Selection reseau `devnet` / `mainnet-beta`.
-- Persistance locale du reseau choisi (`localStorage`).
+- Connexion/déconnexion wallet.
+- Sélection réseau `devnet` / `mainnet-beta`.
+- Persistance locale du réseau choisi (`localStorage`).
 
-### 2) Execution des instructions SDK
+### 2) Exécution des instructions SDK
 
-Le dashboard charge automatiquement les metadonnees depuis `src/generated/instructions` et construit les formulaires dynamiquement.
+Le dashboard charge automatiquement les métadonnées depuis `src/generated/instructions` et construit les formulaires dynamiquement.
 
 Instructions prises en charge:
 
@@ -111,26 +110,26 @@ Instructions prises en charge:
 
 ### 3) Diagnostic transaction
 
-Apres execution:
+Après exécution:
 
 - statut (`pending`, `success`, `error`),
 - signature + lien Solana Explorer,
 - logs RPC,
-- decodage d'erreurs custom du programme,
-- slot, frais, compute units, trace d'instructions.
+- décodage d’erreurs custom du programme,
+- slot, frais, compute units, trace d’instructions.
 
 ### 4) Account Inspector
 
-Decodage on-chain des comptes du programme:
+Décodage on-chain des comptes du programme:
 
 - `BuyerDetails`
 - `PresaleDetails`
 - `PresaleIndex`
 - `PriceUpdateV2`
 
-## Programme Solana cible
+## Programme Solana ciblé
 
-Adresse du programme utilisee dans le SDK genere:
+Adresse du programme utilisée dans le SDK généré:
 
 ```text
 7EmvXDM9hJz3ULKuP9o5qxyfM2M3MT948aJnZnqzKPBG
@@ -138,9 +137,9 @@ Adresse du programme utilisee dans le SDK genere:
 
 Source: `src/generated/programs/presalesSmartContract.ts`.
 
-## Base de donnees (optionnel)
+## Base de données (optionnel)
 
-Le script SQL `db/postgres/init.sql` cree une table `presales` (et index) pour stocker des informations de presale.
+Le script SQL `db/postgres/init.sql` crée une table `presales` (et index) pour stocker des informations de presale.
 
 Initialisation:
 
@@ -152,19 +151,19 @@ npm run db:init
 
 ```text
 src/
-  app/                      # Entree Next.js
-  components/               # UI (wallet, formulaires, resultats, inspecteur)
+  app/                      # Entrée Next.js
+  components/               # UI (wallet, formulaires, résultats, inspecteur)
   hooks/                    # Logique client (wallet, transaction, inspection)
   lib/                      # Helpers SDK/runtime/diagnostics
-  generated/                # Code genere du programme Solana (accounts/instructions/errors)
-db/postgres/init.sql        # Schema SQL optionnel
+  generated/                # Code généré du programme Solana (accounts/instructions/errors)
+db/postgres/init.sql        # Schéma SQL optionnel
 ```
 
 ## Bonnes pratiques
 
 - Ne pas modifier manuellement les fichiers de `src/generated`.
-- Tester d'abord sur `devnet` avant `mainnet-beta`.
-- Verifier soigneusement les adresses et montants avant signature.
+- Tester d’abord sur `devnet` avant `mainnet-beta`.
+- Vérifier soigneusement les adresses et montants avant signature.
 
 ## Licence
 

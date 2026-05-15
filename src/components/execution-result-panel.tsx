@@ -105,6 +105,21 @@ export function ExecutionResultPanel({
         <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
           <p className="text-sm font-medium text-rose-700">Transaction failed</p>
           <p className="mt-1 break-words text-sm text-rose-700">{execution.error}</p>
+          {execution.signature ? (
+            <p className="mt-2 break-all text-xs text-rose-700">
+              Signature: {execution.signature}
+            </p>
+          ) : null}
+          {execution.signature && explorerLink ? (
+            <a
+              className="mt-1 inline-flex text-xs font-medium text-rose-700 underline"
+              href={explorerLink}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open in Solana Explorer
+            </a>
+          ) : null}
           {execution.customErrorHex ? (
             <p className="mt-2 text-xs text-rose-800">
               Program error code: {execution.customErrorHex}

@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS presales (
-  id BIGINT PRIMARY KEY,
+  id BIGINT NOT NULL,
   mint_address TEXT NOT NULL,
   usdc_mint_address TEXT NOT NULL,
   admin_address TEXT NOT NULL,
@@ -29,6 +29,32 @@ CREATE TABLE IF NOT EXISTS presales (
   CONSTRAINT presales_max_tokens_gte_min_tokens CHECK (maximum_tokens_per_address >= minimum_tokens_per_address)
 );
 
+-- Normalize key constraints for both fresh and already-existing tables.
+DO $$
+DECLARE
+  existing_pk_name TEXT;
+BEGIN
+  SELECT tc.constraint_name
+  INTO existing_pk_name
+  FROM information_schema.table_constraints tc
+  WHERE tc.table_schema = current_schema()
+    AND tc.table_name = 'presales'
+    AND tc.constraint_type = 'PRIMARY KEY'
+  LIMIT 1;
+
+  IF existing_pk_name IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE presales DROP CONSTRAINT %I', existing_pk_name);
+  END IF;
+END
+$$;
+
+ALTER TABLE presales DROP CONSTRAINT IF EXISTS presales_non_negative_id;
+ALTER TABLE presales ALTER COLUMN id SET NOT NULL;
+ALTER TABLE presales ALTER COLUMN mint_address SET NOT NULL;
+ALTER TABLE presales ADD CONSTRAINT presales_pk PRIMARY KEY (mint_address, id);
+ALTER TABLE presales ADD CONSTRAINT presales_non_negative_id CHECK (id >= 0);
+
 CREATE INDEX IF NOT EXISTS idx_presales_owner_address ON presales(owner_address);
 CREATE INDEX IF NOT EXISTS idx_presales_mint_address ON presales(mint_address);
+CREATE INDEX IF NOT EXISTS idx_presales_mint_id_desc ON presales(mint_address, id DESC);
 CREATE INDEX IF NOT EXISTS idx_presales_created_at ON presales(created_at DESC);
