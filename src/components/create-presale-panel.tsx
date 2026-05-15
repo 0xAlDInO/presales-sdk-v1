@@ -43,6 +43,8 @@ const AUTO_RESOLVED_OPTIONAL_FIELDS = [
   "associatedTokenProgram",
 ] as const;
 
+const BACKEND_MANAGED_FIELDS = ["id"] as const;
+
 type CreatePresalePanelProps = {
   instruction: InstructionMeta | null;
   connectedWallet: string | null;
@@ -76,6 +78,14 @@ function filterAutoResolvedFields(instruction: InstructionMeta): InstructionMeta
   };
 }
 
+function filterBackendManagedFields(instruction: InstructionMeta): InstructionMeta {
+  const backendManagedSet = new Set<string>(BACKEND_MANAGED_FIELDS);
+  return {
+    ...instruction,
+    fields: instruction.fields.filter((field) => !backendManagedSet.has(field.name)),
+  };
+}
+
 export function CreatePresalePanel({
   instruction,
   connectedWallet,
@@ -96,10 +106,11 @@ export function CreatePresalePanel({
     if (!orderedInstruction) {
       return null;
     }
+    const withoutManagedFields = filterBackendManagedFields(orderedInstruction);
     if (showAdvancedFields) {
-      return orderedInstruction;
+      return withoutManagedFields;
     }
-    return filterAutoResolvedFields(orderedInstruction);
+    return filterAutoResolvedFields(withoutManagedFields);
   }, [orderedInstruction, showAdvancedFields]);
 
   const fieldAudit = useMemo(() => {
@@ -131,6 +142,9 @@ export function CreatePresalePanel({
           Parametres attendus: {CREATE_PRESALE_FIELDS.length} (14 comptes + 8 champs de donnees).
         </p>
         <p className="text-xs text-slate-500">
+          Le champ <code>id</code> est gere automatiquement (DB + verification), sans saisie manuelle.
+        </p>
+        <p className="text-xs text-slate-500">
           Les comptes optionnels auto-resolus par la SDK sont masques par defaut.
         </p>
       </header>
@@ -152,6 +166,9 @@ export function CreatePresalePanel({
         ) : null}
         <p className="mt-2 text-slate-600">
           Champs auto-resolus: {AUTO_RESOLVED_OPTIONAL_FIELDS.join(", ")}
+        </p>
+        <p className="mt-1 text-slate-600">
+          Champs geres automatiquement: {BACKEND_MANAGED_FIELDS.join(", ")}
         </p>
       </div>
 

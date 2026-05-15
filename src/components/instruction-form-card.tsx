@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import type {
   InstructionFieldMeta,
@@ -57,10 +57,6 @@ export function InstructionFormCard({
   const [values, setValues] = useState<InstructionFormValues>(() =>
     createInitialValues(instruction.fields),
   );
-  const [autoIdStatus, setAutoIdStatus] = useState<"idle" | "loading" | "ready" | "error">(
-    "idle",
-  );
-  const [autoIdError, setAutoIdError] = useState<string | null>(null);
 
   const isCreatePresale = instruction.name === "createPresale";
   const createPresaleIdBlockReason = useMemo(() => {
@@ -71,14 +67,8 @@ export function InstructionFormCard({
     if (!mintValue) {
       return "Mint requis pour recuperer l'ID depuis la base.";
     }
-    if (autoIdStatus === "loading" || autoIdStatus === "idle") {
-      return "Recuperation de l'ID en cours...";
-    }
-    if (autoIdStatus === "error") {
-      return autoIdError ?? "Impossible de recuperer l'ID depuis la base.";
-    }
     return null;
-  }, [autoIdError, autoIdStatus, isCreatePresale, values.mint]);
+  }, [isCreatePresale, values.mint]);
   const submitDisabledReason = disabledReason ?? createPresaleIdBlockReason;
   const isBlocked = Boolean(submitDisabledReason) || isPending;
 
@@ -91,78 +81,6 @@ export function InstructionFormCard({
     () => instruction.fields.filter((field) => field.type !== "walletSigner"),
     [instruction.fields],
   );
-
-  useEffect(() => {
-    if (!isCreatePresale) {
-      setAutoIdStatus("idle");
-      setAutoIdError(null);
-      return;
-    }
-
-    const mintValue = typeof values.mint === "string" ? values.mint.trim() : "";
-    if (!mintValue) {
-      setAutoIdStatus("idle");
-      setAutoIdError(null);
-      setValues((previous) => ({
-        ...previous,
-        id: "",
-      }));
-      return;
-    }
-
-    const controller = new AbortController();
-    setAutoIdStatus("loading");
-    setAutoIdError(null);
-    const timeoutId = window.setTimeout(async () => {
-      try {
-        const response = await fetch(
-          `/api/presales/next-id?mint=${encodeURIComponent(mintValue)}`,
-          {
-            method: "GET",
-            signal: controller.signal,
-          },
-        );
-        const payload = (await response.json().catch(() => null)) as
-          | { nextId?: string; error?: string }
-          | null;
-
-        if (!response.ok || typeof payload?.nextId !== "string") {
-          const apiError =
-            typeof payload?.error === "string"
-              ? payload.error
-              : "Impossible de recuperer l'ID depuis la base.";
-          throw new Error(apiError);
-        }
-
-        setValues((previous) => ({
-          ...previous,
-          id: payload.nextId ?? "",
-        }));
-        setAutoIdStatus("ready");
-        setAutoIdError(null);
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        setValues((previous) => ({
-          ...previous,
-          id: "",
-        }));
-        setAutoIdStatus("error");
-        setAutoIdError(
-          error instanceof Error
-            ? error.message
-            : "Impossible de recuperer l'ID depuis la base.",
-        );
-      }
-    }, 350);
-
-    return () => {
-      controller.abort();
-      window.clearTimeout(timeoutId);
-    };
-  }, [isCreatePresale, values.mint]);
 
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -191,20 +109,9 @@ export function InstructionFormCard({
         {isCreatePresale ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
             <p>
-              Champ <code>id</code> gere par la base via le <code>mint</code>. Pour un nouveau
-              token, la valeur commence toujours a <code>0</code>.
+              Le champ <code>id</code> est gere automatiquement via le <code>mint</code>.
+              Aucun ID manuel n&apos;est requis. Pour un nouveau token, la sequence commence a <code>0</code>.
             </p>
-            {autoIdStatus === "loading" ? <p className="mt-1">Resolution de l&apos;ID...</p> : null}
-            {autoIdStatus === "ready" ? (
-              <p className="mt-1 text-emerald-700">
-                ID actuel: <code>{String(values.id || "")}</code>
-              </p>
-            ) : null}
-            {autoIdStatus === "error" ? (
-              <p className="mt-1 text-rose-700">
-                Erreur DB: {autoIdError ?? "Resolution impossible."}
-              </p>
-            ) : null}
           </div>
         ) : null}
 
@@ -233,7 +140,6 @@ export function InstructionFormCard({
 
         {inputFields.map((field) => {
           const inputId = `${instruction.name}-${field.name}`;
-          const isCreatePresaleIdField = isCreatePresale && field.name === "id";
 
           if (field.type === "boolean") {
             return (
@@ -284,7 +190,6 @@ export function InstructionFormCard({
                 inputMode={field.type === "number" ? "numeric" : "text"}
                 placeholder={getPlaceholder(field)}
                 value={(values[field.name] as string) ?? ""}
-                readOnly={isCreatePresaleIdField}
                 onChange={(event) =>
                   setValues((previous) => ({
                     ...previous,
@@ -298,11 +203,6 @@ export function InstructionFormCard({
               {field.name.toLowerCase().includes("addresses") ? (
                 <p className="text-[11px] text-slate-400">
                   Comma or semicolon separated addresses are accepted.
-                </p>
-              ) : null}
-              {isCreatePresaleIdField ? (
-                <p className="text-[11px] text-slate-500">
-                  Valeur synchronisee automatiquement avec la base.
                 </p>
               ) : null}
             </div>
