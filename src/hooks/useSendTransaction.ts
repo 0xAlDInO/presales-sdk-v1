@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { getChainForEndpoint } from "@solana/wallet-standard-util";
 import { Transaction } from "@solana/web3.js";
 
 import { buildInstructionInput } from "@/lib/instruction-values";
@@ -60,11 +61,81 @@ type SdkInstructionLike = {
   accounts?: ReadonlyArray<{ address: string }>;
 };
 
+type WalletStandardAccountLike = {
+  address?: unknown;
+  chains?: unknown;
+};
+
+type WalletAdapterLike = {
+  name?: unknown;
+  wallet?: {
+    accounts?: unknown;
+  };
+};
+
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
   return "Transaction failed unexpectedly.";
+}
+
+function readWalletName(walletAdapter: unknown): string {
+  const candidate = (walletAdapter as WalletAdapterLike | null)?.name;
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate
+    : "Selected wallet";
+}
+
+function readConnectedWalletChains(
+  walletAdapter: unknown,
+  connectedWalletAddress: string,
+): string[] | null {
+  const rawAccounts = (walletAdapter as WalletAdapterLike | null)?.wallet?.accounts;
+  if (!Array.isArray(rawAccounts) || rawAccounts.length === 0) {
+    return null;
+  }
+
+  const accounts = rawAccounts as WalletStandardAccountLike[];
+
+  const matchingAccount =
+    accounts.find((account) => account.address === connectedWalletAddress) ?? accounts[0];
+
+  const chains = Array.isArray(matchingAccount?.chains)
+    ? matchingAccount.chains.filter((value): value is string => typeof value === "string")
+    : [];
+
+  return chains.length > 0 ? chains : null;
+}
+
+function isGenericWalletSendError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const normalizedMessage = error.message.trim().toLowerCase();
+  return normalizedMessage.length === 0 || normalizedMessage === "unexpected error";
+}
+
+function buildWalletSendErrorMessage(
+  error: unknown,
+  walletAdapter: unknown,
+  connectedWalletAddress: string,
+  endpoint: string,
+): string | null {
+  const walletName = readWalletName(walletAdapter);
+  const expectedChain = getChainForEndpoint(endpoint);
+  const supportedChains = readConnectedWalletChains(walletAdapter, connectedWalletAddress);
+
+  if (supportedChains && !supportedChains.includes(expectedChain)) {
+    return `Wallet "${walletName}" does not support the selected RPC chain (${expectedChain}). Supported chains: ${supportedChains.join(", ")}. Switch network in the app or use another wallet.`;
+  }
+
+  if (isGenericWalletSendError(error)) {
+    return `Wallet "${walletName}" failed to send the transaction on ${expectedChain}. Check wallet approval popup, selected network, and SOL balance for fees.`;
+  }
+
+  return null;
 }
 
 function readApiErrorPayload(payload: unknown): string | null {
@@ -198,7 +269,7 @@ async function persistValidatedCreatePresale(
 
 export function useSendTransaction() {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey, sendTransaction, wallet } = useWallet();
   const [execution, setExecution] =
     useState<TransactionExecutionState>(INITIAL_STATE);
 
@@ -254,7 +325,10 @@ export function useSendTransaction() {
           await connection.getLatestBlockhash("confirmed");
         transaction.recentBlockhash = blockhash;
 
-        signature = await sendTransaction(transaction, connection);
+        signature = await sendTransaction(transaction, connection, {
+          preflightCommitment: "confirmed",
+          skipPreflight: false,
+        });
 
         await connection.confirmTransaction(
           {
@@ -298,12 +372,23 @@ export function useSendTransaction() {
         return signature;
       } catch (error) {
         const decodedError = decodeProgramError(error);
+        const walletSendErrorMessage =
+          buildWalletSendErrorMessage(
+            error,
+            wallet?.adapter ?? null,
+            publicKey.toBase58(),
+            connection.rpcEndpoint,
+          );
+        const effectiveErrorMessage =
+          walletSendErrorMessage ??
+          decodedError.userMessage ??
+          toErrorMessage(error);
 
         setExecution({
           status: "error",
           instructionName: instruction.displayName,
           signature,
-          error: decodedError.userMessage || toErrorMessage(error),
+          error: effectiveErrorMessage,
           customErrorCode: decodedError.customErrorCode,
           customErrorHex: decodedError.customErrorHex,
           customErrorMessage: decodedError.customErrorMessage,
@@ -313,7 +398,7 @@ export function useSendTransaction() {
         throw error;
       }
     },
-    [connection, publicKey, sendTransaction],
+    [connection, publicKey, sendTransaction, wallet],
   );
 
   return {

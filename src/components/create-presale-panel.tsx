@@ -113,6 +113,10 @@ export function CreatePresalePanel({
     return filterAutoResolvedFields(withoutManagedFields);
   }, [orderedInstruction, showAdvancedFields]);
 
+  const executionInstruction = useMemo(() => {
+    return orderedInstruction;
+  }, [orderedInstruction]);
+
   const fieldAudit = useMemo(() => {
     if (!instruction) {
       return { missing: CREATE_PRESALE_FIELDS, extra: [] as string[] };
@@ -186,7 +190,12 @@ export function CreatePresalePanel({
           connectedWallet={connectedWallet}
           disabledReason={disabledReason}
           isPending={isPending}
-          onExecute={onExecute}
+          onExecute={async (_displayInstruction, values) => {
+            if (!executionInstruction) {
+              return;
+            }
+            await onExecute(executionInstruction, values);
+          }}
         />
       ) : (
         <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">

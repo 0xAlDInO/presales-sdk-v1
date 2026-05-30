@@ -64,6 +64,29 @@ function extractErrorLogs(error: unknown): string[] {
   return [];
 }
 
+function extractNestedError(error: unknown): unknown {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const nestedCandidate = (error as { error?: unknown }).error;
+  return nestedCandidate ?? null;
+}
+
+function extractErrorMessage(error: unknown): string | null {
+  if (error instanceof Error) {
+    const message = error.message.trim();
+    return message.length > 0 ? message : null;
+  }
+
+  if (typeof error === "string") {
+    const message = error.trim();
+    return message.length > 0 ? message : null;
+  }
+
+  return null;
+}
+
 function maybeProgramErrorMessage(code: number): string | null {
   const message = getPresalesSmartContractErrorMessage(code as never);
 
@@ -114,10 +137,13 @@ function buildInstructionTrace(
 }
 
 export function decodeProgramError(error: unknown): DecodedProgramErrorDetails {
+  const nestedError = extractNestedError(error);
   const baseMessage =
-    error instanceof Error ? error.message : "Transaction failed unexpectedly.";
+    extractErrorMessage(error) ??
+    extractErrorMessage(nestedError) ??
+    "Transaction failed unexpectedly.";
 
-  const logs = extractErrorLogs(error);
+  const logs = [...extractErrorLogs(error), ...extractErrorLogs(nestedError)];
   const rawSource = [baseMessage, ...logs].join("\n");
   const customErrorCode = parseCustomErrorCode(rawSource);
 
