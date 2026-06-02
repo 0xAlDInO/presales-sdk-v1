@@ -13,7 +13,10 @@ type InstructionFormCardProps = {
   connectedWallet: string | null;
   disabledReason: string | null;
   isPending: boolean;
-  onExecute: (instruction: InstructionMeta, values: InstructionFormValues) => Promise<void>;
+  onExecute: (
+    instruction: InstructionMeta,
+    values: InstructionFormValues,
+  ) => Promise<void>;
 };
 
 function getPlaceholder(field: InstructionFieldMeta): string {
@@ -40,7 +43,162 @@ function toFieldLabel(fieldName: string): string {
   return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
 }
 
-function createInitialValues(fields: InstructionFieldMeta[]): InstructionFormValues {
+const LAMPORTS_PER_SIGNATURE_FEE = 5_000n;
+const LAMPORTS_PER_SOL = 1_000_000_000n;
+
+const CREATE_PRESALE_REVIEW_FIELDS = [
+  "softCapAmount",
+  "hardCapAmount",
+  "minimumTokensPerAddress",
+  "maximumTokensPerAddress",
+  "pricePerToken",
+] as const;
+
+function readStringValue(values: InstructionFormValues, key: string): string {
+  const value = values[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseUnsignedInteger(value: string): bigint | null {
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+
+  return BigInt(value);
+}
+
+function formatBigInt(value: bigint): string {
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
+function formatLamportsAsSol(lamports: bigint): string {
+  const whole = lamports / LAMPORTS_PER_SOL;
+  const fraction = (lamports % LAMPORTS_PER_SOL)
+    .toString()
+    .padStart(9, "0")
+    .replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
+function getDerivedTokenAmount(
+  capAmount: bigint | null,
+  pricePerToken: bigint | null,
+) {
+  if (capAmount === null || pricePerToken === null || pricePerToken <= 0n) {
+    return null;
+  }
+
+  return {
+    tokens: capAmount / pricePerToken,
+    remainder: capAmount % pricePerToken,
+  };
+}
+
+function CreatePresaleSignatureReview({
+  values,
+}: {
+  values: InstructionFormValues;
+}) {
+  const softCapAmount = parseUnsignedInteger(
+    readStringValue(values, "softCapAmount"),
+  );
+  const hardCapAmount = parseUnsignedInteger(
+    readStringValue(values, "hardCapAmount"),
+  );
+  const minimumTokensPerAddress = parseUnsignedInteger(
+    readStringValue(values, "minimumTokensPerAddress"),
+  );
+  const maximumTokensPerAddress = parseUnsignedInteger(
+    readStringValue(values, "maximumTokensPerAddress"),
+  );
+  const pricePerToken = parseUnsignedInteger(
+    readStringValue(values, "pricePerToken"),
+  );
+  const softCapTokens = getDerivedTokenAmount(softCapAmount, pricePerToken);
+  const hardCapTokens = getDerivedTokenAmount(hardCapAmount, pricePerToken);
+  const maxBuyerCost =
+    maximumTokensPerAddress !== null && pricePerToken !== null
+      ? maximumTokensPerAddress * pricePerToken
+      : null;
+  const hasAllReviewValues = CREATE_PRESALE_REVIEW_FIELDS.every((fieldName) =>
+    /^\d+$/.test(readStringValue(values, fieldName)),
+  );
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+      <p className="font-semibold">Resume avant signature Phantom</p>
+      <ul className="mt-2 list-disc space-y-1 pl-5">
+        <li>
+          <span className="font-medium">Tokens a crediter maintenant:</span>{" "}
+          aucun transfert de tokens n&apos;est demande par{" "}
+          <code>createPresale</code>. Cette transaction configure la presale et
+          ses comptes.
+        </li>
+        <li>
+          <span className="font-medium">
+            Tokens a prevoir pour couvrir le hard cap:
+          </span>{" "}
+          {hardCapTokens ? (
+            <>
+              {formatBigInt(hardCapTokens.tokens)} unite(s) token brutes
+              {hardCapTokens.remainder > 0n
+                ? " (attention: hardCapAmount n'est pas divisible exactement par pricePerToken)"
+                : ""}
+            </>
+          ) : (
+            "renseignez hardCapAmount et pricePerToken."
+          )}
+        </li>
+        <li>
+          <span className="font-medium">Soft cap equivalent:</span>{" "}
+          {softCapTokens
+            ? `${formatBigInt(softCapTokens.tokens)} unite(s) token brutes${
+                softCapTokens.remainder > 0n
+                  ? " (division non exacte avec pricePerToken)"
+                  : ""
+              }`
+            : "renseignez softCapAmount et pricePerToken."}
+        </li>
+        <li>
+          <span className="font-medium">Limites acheteur:</span>{" "}
+          {minimumTokensPerAddress !== null && maximumTokensPerAddress !== null
+            ? `${formatBigInt(minimumTokensPerAddress)} a ${formatBigInt(
+                maximumTokensPerAddress,
+              )} unite(s) token brutes par wallet`
+            : "renseignez minimumTokensPerAddress et maximumTokensPerAddress."}
+        </li>
+        <li>
+          <span className="font-medium">Cout max par acheteur:</span>{" "}
+          {maxBuyerCost !== null
+            ? `${formatBigInt(maxBuyerCost)} unite(s) de paiement brutes`
+            : "renseignez maximumTokensPerAddress et pricePerToken."}
+        </li>
+        <li>
+          <span className="font-medium">Frais wallet:</span> prevoyez au minimum
+          environ {formatBigInt(LAMPORTS_PER_SIGNATURE_FEE)} lamports (
+          {formatLamportsAsSol(LAMPORTS_PER_SIGNATURE_FEE)} SOL) de frais
+          reseau, plus assez de SOL devnet si le programme cree des comptes
+          rent-exempt.
+        </li>
+      </ul>
+      <p className="mt-2 text-[11px] text-amber-800">
+        Les montants sont en unites brutes on-chain. Si votre mint a des
+        decimales, convertissez le montant UI avant saisie (ex: 1 token avec 6
+        decimales = 1,000,000).
+      </p>
+      {!hasAllReviewValues ? (
+        <p className="mt-2 text-[11px] font-medium text-amber-800">
+          Completez les champs numeriques pour afficher tous les calculs avant
+          d&apos;ouvrir le popup wallet.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function createInitialValues(
+  fields: InstructionFieldMeta[],
+): InstructionFormValues {
   return fields.reduce<InstructionFormValues>((accumulator, field) => {
     accumulator[field.name] = field.type === "boolean" ? false : "";
     return accumulator;
@@ -89,7 +247,9 @@ export function InstructionFormCard({
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             {instruction.displayName}
           </h3>
-          <p className="mt-1 text-xs text-slate-500">{instruction.builderName}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {instruction.builderName}
+          </p>
           <p className="mt-1 text-xs text-slate-400">
             {inputFields.length} input field{inputFields.length > 1 ? "s" : ""}
             {signerFields.length > 0
@@ -107,12 +267,16 @@ export function InstructionFormCard({
         }}
       >
         {isCreatePresale ? (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-            <p>
-              Le champ <code>id</code> est gere automatiquement via le <code>mint</code>.
-              Aucun ID manuel n&apos;est requis. Pour un nouveau token, la sequence commence a <code>0</code>.
-            </p>
-          </div>
+          <>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+              <p>
+                Le champ <code>id</code> est gere automatiquement via le{" "}
+                <code>mint</code>. Aucun ID manuel n&apos;est requis. Pour un
+                nouveau token, la sequence commence a <code>0</code>.
+              </p>
+            </div>
+            <CreatePresaleSignatureReview values={values} />
+          </>
         ) : null}
 
         {signerFields.length > 0 ? (
