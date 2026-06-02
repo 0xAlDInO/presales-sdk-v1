@@ -13,7 +13,10 @@ type InstructionFormCardProps = {
   connectedWallet: string | null;
   disabledReason: string | null;
   isPending: boolean;
-  onExecute: (instruction: InstructionMeta, values: InstructionFormValues) => Promise<void>;
+  onExecute: (
+    instruction: InstructionMeta,
+    values: InstructionFormValues,
+  ) => Promise<void>;
 };
 
 function getPlaceholder(field: InstructionFieldMeta): string {
@@ -40,7 +43,206 @@ function toFieldLabel(fieldName: string): string {
   return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
 }
 
-function createInitialValues(fields: InstructionFieldMeta[]): InstructionFormValues {
+const LAMPORTS_PER_SIGNATURE_FEE = 5_000n;
+const LAMPORTS_PER_SOL = 1_000_000_000n;
+
+const CREATE_PRESALE_REVIEW_FIELDS = [
+  "softCapAmount",
+  "hardCapAmount",
+  "minimumTokensPerAddress",
+  "maximumTokensPerAddress",
+  "pricePerToken",
+] as const;
+
+function readStringValue(values: InstructionFormValues, key: string): string {
+  const value = values[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseUnsignedInteger(value: string): bigint | null {
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+
+  return BigInt(value);
+}
+
+function formatBigInt(value: bigint): string {
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
+function formatLamportsAsSol(lamports: bigint): string {
+  const whole = lamports / LAMPORTS_PER_SOL;
+  const fraction = (lamports % LAMPORTS_PER_SOL)
+    .toString()
+    .padStart(9, "0")
+    .replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
+function getDerivedTokenAmount(
+  capAmount: bigint | null,
+  pricePerToken: bigint | null,
+) {
+  if (capAmount === null || pricePerToken === null || pricePerToken <= 0n) {
+    return null;
+  }
+
+  return {
+    tokens: capAmount / pricePerToken,
+    remainder: capAmount % pricePerToken,
+  };
+}
+
+function CreatePresaleSignatureReview({
+  values,
+}: {
+  values: InstructionFormValues;
+}) {
+  const softCapAmount = parseUnsignedInteger(
+    readStringValue(values, "softCapAmount"),
+  );
+  const hardCapAmount = parseUnsignedInteger(
+    readStringValue(values, "hardCapAmount"),
+  );
+  const minimumTokensPerAddress = parseUnsignedInteger(
+    readStringValue(values, "minimumTokensPerAddress"),
+  );
+  const maximumTokensPerAddress = parseUnsignedInteger(
+    readStringValue(values, "maximumTokensPerAddress"),
+  );
+  const pricePerToken = parseUnsignedInteger(
+    readStringValue(values, "pricePerToken"),
+  );
+  const softCapTokens = getDerivedTokenAmount(softCapAmount, pricePerToken);
+  const hardCapTokens = getDerivedTokenAmount(hardCapAmount, pricePerToken);
+  const maxBuyerCost =
+    maximumTokensPerAddress !== null && pricePerToken !== null
+      ? maximumTokensPerAddress * pricePerToken
+      : null;
+  const hasAllReviewValues = CREATE_PRESALE_REVIEW_FIELDS.every((fieldName) =>
+    /^\d+$/.test(readStringValue(values, fieldName)),
+  );
+
+  return (
+    <div className="space-y-3 rounded-xl border-2 border-amber-300 bg-amber-50 p-4 text-xs text-amber-950 shadow-sm">
+      <div>
+        <p className="text-sm font-bold text-amber-950">
+          A verifier avant de signer dans Phantom
+        </p>
+        <p className="mt-1 text-amber-800">
+          Le popup Phantom ne detaille pas toujours les calculs metier: ce
+          resume est aussi ajoute dans la transaction via une instruction Memo
+          afin de rendre la signature plus lisible.
+        </p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-amber-200 bg-white/70 p-3">
+          <p className="font-semibold text-amber-900">
+            Nombre de tokens en presale
+          </p>
+          <p className="mt-1 text-lg font-bold text-amber-950">
+            {hardCapTokens
+              ? `${formatBigInt(hardCapTokens.tokens)} unite(s) token brutes`
+              : "A calculer"}
+          </p>
+          <p className="mt-1 text-[11px] text-amber-800">
+            Formule: <code>hardCapAmount / pricePerToken</code>. C&apos;est le
+            nombre de tokens necessaire pour vendre jusqu&apos;au hard cap.
+          </p>
+          {hardCapTokens?.remainder && hardCapTokens.remainder > 0n ? (
+            <p className="mt-1 text-[11px] font-semibold text-rose-700">
+              Attention: division non exacte. Ajustez hardCapAmount ou
+              pricePerToken avant signature.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-white/70 p-3">
+          <p className="font-semibold text-amber-900">
+            Frais a prevoir pour signer
+          </p>
+          <p className="mt-1 text-lg font-bold text-amber-950">
+            ≥ {formatBigInt(LAMPORTS_PER_SIGNATURE_FEE)} lamports (
+            {formatLamportsAsSol(LAMPORTS_PER_SIGNATURE_FEE)} SOL)
+          </p>
+          <p className="mt-1 text-[11px] text-amber-800">
+            Frais reseau minimum pour la signature. Le montant final peut etre
+            plus eleve dans Phantom si un priority fee est applique, et il faut
+            aussi le SOL devnet requis pour les comptes rent-exempt crees par le
+            programme.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-white/70 p-3">
+          <p className="font-semibold text-amber-900">Soft cap equivalent</p>
+          <p className="mt-1 text-lg font-bold text-amber-950">
+            {softCapTokens
+              ? `${formatBigInt(softCapTokens.tokens)} unite(s) token brutes`
+              : "A calculer"}
+          </p>
+          <p className="mt-1 text-[11px] text-amber-800">
+            Formule: <code>softCapAmount / pricePerToken</code>.
+          </p>
+          {softCapTokens?.remainder && softCapTokens.remainder > 0n ? (
+            <p className="mt-1 text-[11px] font-semibold text-rose-700">
+              Attention: soft cap non divisible exactement par pricePerToken.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-white/70 p-3">
+          <p className="font-semibold text-amber-900">Limites acheteur</p>
+          <p className="mt-1 text-lg font-bold text-amber-950">
+            {minimumTokensPerAddress !== null &&
+            maximumTokensPerAddress !== null
+              ? `${formatBigInt(minimumTokensPerAddress)} - ${formatBigInt(
+                  maximumTokensPerAddress,
+                )} tokens bruts / wallet`
+              : "A calculer"}
+          </p>
+          <p className="mt-1 text-[11px] text-amber-800">
+            Cout max par acheteur:{" "}
+            {maxBuyerCost !== null
+              ? `${formatBigInt(maxBuyerCost)} unite(s) de paiement brutes`
+              : "renseignez maximumTokensPerAddress et pricePerToken"}
+            .
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-amber-200 bg-white/70 p-3">
+        <p className="font-semibold text-amber-900">
+          Tokens credites par cette transaction
+        </p>
+        <p className="mt-1 text-amber-800">
+          <strong>0 token envoye/credite pendant createPresale.</strong> Cette
+          instruction configure la presale; elle ne transfere pas de tokens a un
+          acheteur. Les montants affiches ci-dessus indiquent combien de tokens
+          la presale doit pouvoir couvrir.
+        </p>
+      </div>
+
+      <p className="text-[11px] text-amber-800">
+        Tous les montants sont en unites brutes on-chain. Si votre mint a des
+        decimales, convertissez le montant UI avant saisie (ex: 1 token avec 6
+        decimales = 1,000,000).
+      </p>
+      {!hasAllReviewValues ? (
+        <p className="text-[11px] font-semibold text-amber-900">
+          Completez hardCapAmount, softCapAmount, pricePerToken,
+          minimumTokensPerAddress et maximumTokensPerAddress pour afficher les
+          valeurs exactes avant d&apos;ouvrir le popup wallet.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function createInitialValues(
+  fields: InstructionFieldMeta[],
+): InstructionFormValues {
   return fields.reduce<InstructionFormValues>((accumulator, field) => {
     accumulator[field.name] = field.type === "boolean" ? false : "";
     return accumulator;
@@ -89,7 +291,9 @@ export function InstructionFormCard({
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             {instruction.displayName}
           </h3>
-          <p className="mt-1 text-xs text-slate-500">{instruction.builderName}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {instruction.builderName}
+          </p>
           <p className="mt-1 text-xs text-slate-400">
             {inputFields.length} input field{inputFields.length > 1 ? "s" : ""}
             {signerFields.length > 0
@@ -107,12 +311,15 @@ export function InstructionFormCard({
         }}
       >
         {isCreatePresale ? (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-            <p>
-              Le champ <code>id</code> est gere automatiquement via le <code>mint</code>.
-              Aucun ID manuel n&apos;est requis. Pour un nouveau token, la sequence commence a <code>0</code>.
-            </p>
-          </div>
+          <>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+              <p>
+                Le champ <code>id</code> est gere automatiquement via le{" "}
+                <code>mint</code>. Aucun ID manuel n&apos;est requis. Pour un
+                nouveau token, la sequence commence a <code>0</code>.
+              </p>
+            </div>
+          </>
         ) : null}
 
         {signerFields.length > 0 ? (
@@ -208,6 +415,10 @@ export function InstructionFormCard({
             </div>
           );
         })}
+
+        {isCreatePresale ? (
+          <CreatePresaleSignatureReview values={values} />
+        ) : null}
 
         <button
           type="submit"
