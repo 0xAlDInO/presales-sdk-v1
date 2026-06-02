@@ -125,71 +125,112 @@ function CreatePresaleSignatureReview({
   );
 
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-      <p className="font-semibold">Resume avant signature Phantom</p>
-      <ul className="mt-2 list-disc space-y-1 pl-5">
-        <li>
-          <span className="font-medium">Tokens a crediter maintenant:</span>{" "}
-          aucun transfert de tokens n&apos;est demande par{" "}
-          <code>createPresale</code>. Cette transaction configure la presale et
-          ses comptes.
-        </li>
-        <li>
-          <span className="font-medium">
-            Tokens a prevoir pour couvrir le hard cap:
-          </span>{" "}
-          {hardCapTokens ? (
-            <>
-              {formatBigInt(hardCapTokens.tokens)} unite(s) token brutes
-              {hardCapTokens.remainder > 0n
-                ? " (attention: hardCapAmount n'est pas divisible exactement par pricePerToken)"
-                : ""}
-            </>
-          ) : (
-            "renseignez hardCapAmount et pricePerToken."
-          )}
-        </li>
-        <li>
-          <span className="font-medium">Soft cap equivalent:</span>{" "}
-          {softCapTokens
-            ? `${formatBigInt(softCapTokens.tokens)} unite(s) token brutes${
-                softCapTokens.remainder > 0n
-                  ? " (division non exacte avec pricePerToken)"
-                  : ""
-              }`
-            : "renseignez softCapAmount et pricePerToken."}
-        </li>
-        <li>
-          <span className="font-medium">Limites acheteur:</span>{" "}
-          {minimumTokensPerAddress !== null && maximumTokensPerAddress !== null
-            ? `${formatBigInt(minimumTokensPerAddress)} a ${formatBigInt(
-                maximumTokensPerAddress,
-              )} unite(s) token brutes par wallet`
-            : "renseignez minimumTokensPerAddress et maximumTokensPerAddress."}
-        </li>
-        <li>
-          <span className="font-medium">Cout max par acheteur:</span>{" "}
-          {maxBuyerCost !== null
-            ? `${formatBigInt(maxBuyerCost)} unite(s) de paiement brutes`
-            : "renseignez maximumTokensPerAddress et pricePerToken."}
-        </li>
-        <li>
-          <span className="font-medium">Frais wallet:</span> prevoyez au minimum
-          environ {formatBigInt(LAMPORTS_PER_SIGNATURE_FEE)} lamports (
-          {formatLamportsAsSol(LAMPORTS_PER_SIGNATURE_FEE)} SOL) de frais
-          reseau, plus assez de SOL devnet si le programme cree des comptes
-          rent-exempt.
-        </li>
-      </ul>
-      <p className="mt-2 text-[11px] text-amber-800">
-        Les montants sont en unites brutes on-chain. Si votre mint a des
+    <div className="space-y-3 rounded-xl border-2 border-amber-300 bg-amber-50 p-4 text-xs text-amber-950 shadow-sm">
+      <div>
+        <p className="text-sm font-bold text-amber-950">
+          A verifier avant de signer dans Phantom
+        </p>
+        <p className="mt-1 text-amber-800">
+          Le popup Phantom ne detaille pas les calculs metier: verifiez ce
+          resume dans le dashboard avant de cliquer sur Approve.
+        </p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-amber-200 bg-white/70 p-3">
+          <p className="font-semibold text-amber-900">
+            Nombre de tokens en presale
+          </p>
+          <p className="mt-1 text-lg font-bold text-amber-950">
+            {hardCapTokens
+              ? `${formatBigInt(hardCapTokens.tokens)} unite(s) token brutes`
+              : "A calculer"}
+          </p>
+          <p className="mt-1 text-[11px] text-amber-800">
+            Formule: <code>hardCapAmount / pricePerToken</code>. C&apos;est le
+            nombre de tokens necessaire pour vendre jusqu&apos;au hard cap.
+          </p>
+          {hardCapTokens?.remainder && hardCapTokens.remainder > 0n ? (
+            <p className="mt-1 text-[11px] font-semibold text-rose-700">
+              Attention: division non exacte. Ajustez hardCapAmount ou
+              pricePerToken avant signature.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-white/70 p-3">
+          <p className="font-semibold text-amber-900">
+            Frais a prevoir pour signer
+          </p>
+          <p className="mt-1 text-lg font-bold text-amber-950">
+            ≥ {formatBigInt(LAMPORTS_PER_SIGNATURE_FEE)} lamports (
+            {formatLamportsAsSol(LAMPORTS_PER_SIGNATURE_FEE)} SOL)
+          </p>
+          <p className="mt-1 text-[11px] text-amber-800">
+            Frais reseau minimum pour la signature, plus le SOL devnet requis
+            pour les comptes rent-exempt crees par le programme.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-white/70 p-3">
+          <p className="font-semibold text-amber-900">Soft cap equivalent</p>
+          <p className="mt-1 text-lg font-bold text-amber-950">
+            {softCapTokens
+              ? `${formatBigInt(softCapTokens.tokens)} unite(s) token brutes`
+              : "A calculer"}
+          </p>
+          <p className="mt-1 text-[11px] text-amber-800">
+            Formule: <code>softCapAmount / pricePerToken</code>.
+          </p>
+          {softCapTokens?.remainder && softCapTokens.remainder > 0n ? (
+            <p className="mt-1 text-[11px] font-semibold text-rose-700">
+              Attention: soft cap non divisible exactement par pricePerToken.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-white/70 p-3">
+          <p className="font-semibold text-amber-900">Limites acheteur</p>
+          <p className="mt-1 text-lg font-bold text-amber-950">
+            {minimumTokensPerAddress !== null &&
+            maximumTokensPerAddress !== null
+              ? `${formatBigInt(minimumTokensPerAddress)} - ${formatBigInt(
+                  maximumTokensPerAddress,
+                )} tokens bruts / wallet`
+              : "A calculer"}
+          </p>
+          <p className="mt-1 text-[11px] text-amber-800">
+            Cout max par acheteur:{" "}
+            {maxBuyerCost !== null
+              ? `${formatBigInt(maxBuyerCost)} unite(s) de paiement brutes`
+              : "renseignez maximumTokensPerAddress et pricePerToken"}
+            .
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-amber-200 bg-white/70 p-3">
+        <p className="font-semibold text-amber-900">
+          Tokens credites par cette transaction
+        </p>
+        <p className="mt-1 text-amber-800">
+          <strong>0 token envoye/credite pendant createPresale.</strong> Cette
+          instruction configure la presale; elle ne transfere pas de tokens a un
+          acheteur. Les montants affiches ci-dessus indiquent combien de tokens
+          la presale doit pouvoir couvrir.
+        </p>
+      </div>
+
+      <p className="text-[11px] text-amber-800">
+        Tous les montants sont en unites brutes on-chain. Si votre mint a des
         decimales, convertissez le montant UI avant saisie (ex: 1 token avec 6
         decimales = 1,000,000).
       </p>
       {!hasAllReviewValues ? (
-        <p className="mt-2 text-[11px] font-medium text-amber-800">
-          Completez les champs numeriques pour afficher tous les calculs avant
-          d&apos;ouvrir le popup wallet.
+        <p className="text-[11px] font-semibold text-amber-900">
+          Completez hardCapAmount, softCapAmount, pricePerToken,
+          minimumTokensPerAddress et maximumTokensPerAddress pour afficher les
+          valeurs exactes avant d&apos;ouvrir le popup wallet.
         </p>
       ) : null}
     </div>
@@ -275,7 +316,6 @@ export function InstructionFormCard({
                 nouveau token, la sequence commence a <code>0</code>.
               </p>
             </div>
-            <CreatePresaleSignatureReview values={values} />
           </>
         ) : null}
 
@@ -372,6 +412,10 @@ export function InstructionFormCard({
             </div>
           );
         })}
+
+        {isCreatePresale ? (
+          <CreatePresaleSignatureReview values={values} />
+        ) : null}
 
         <button
           type="submit"
