@@ -131,8 +131,9 @@ function CreatePresaleSignatureReview({
           A verifier avant de signer dans Phantom
         </p>
         <p className="mt-1 text-amber-800">
-          Le popup Phantom ne detaille pas les calculs metier: verifiez ce
-          resume dans le dashboard avant de cliquer sur Approve.
+          Le popup Phantom ne detaille pas toujours les calculs metier: ce
+          resume est aussi ajoute dans la transaction via une instruction Memo
+          afin de rendre la signature plus lisible.
         </p>
       </div>
 
@@ -167,8 +168,10 @@ function CreatePresaleSignatureReview({
             {formatLamportsAsSol(LAMPORTS_PER_SIGNATURE_FEE)} SOL)
           </p>
           <p className="mt-1 text-[11px] text-amber-800">
-            Frais reseau minimum pour la signature, plus le SOL devnet requis
-            pour les comptes rent-exempt crees par le programme.
+            Frais reseau minimum pour la signature. Le montant final peut etre
+            plus eleve dans Phantom si un priority fee est applique, et il faut
+            aussi le SOL devnet requis pour les comptes rent-exempt crees par le
+            programme.
           </p>
         </div>
 

@@ -3,16 +3,26 @@
 import { useCallback, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { getChainForEndpoint } from "@solana/wallet-standard-util";
-import { Transaction } from "@solana/web3.js";
+import {
+  PublicKey,
+  Transaction,
+  TransactionInstruction,
+} from "@solana/web3.js";
 
 import { buildInstructionInput } from "@/lib/instruction-values";
-import { getInstructionBuilder, sdkInstructionToWeb3Instruction } from "@/lib/sdk-runtime";
+import {
+  getInstructionBuilder,
+  sdkInstructionToWeb3Instruction,
+} from "@/lib/sdk-runtime";
 import {
   decodeProgramError,
   fetchTransactionDiagnostics,
 } from "@/lib/transaction-diagnostics";
 import type { TransactionDiagnostics } from "@/types/transaction";
-import type { InstructionFormValues, InstructionMeta } from "@/types/instruction";
+import type {
+  InstructionFormValues,
+  InstructionMeta,
+} from "@/types/instruction";
 
 type TransactionStatus = "idle" | "pending" | "success" | "error";
 
@@ -39,6 +49,12 @@ const INITIAL_STATE: TransactionExecutionState = {
   logs: [],
   diagnostics: null,
 };
+
+const MEMO_PROGRAM_ID = new PublicKey(
+  "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+);
+const LAMPORTS_PER_SIGNATURE_FEE = 5_000n;
+const LAMPORTS_PER_SOL = 1_000_000_000n;
 
 const CREATE_PRESALE_ACCOUNT_INDEX = {
   mint: 0,
@@ -91,7 +107,8 @@ function readConnectedWalletChains(
   walletAdapter: unknown,
   connectedWalletAddress: string,
 ): string[] | null {
-  const rawAccounts = (walletAdapter as WalletAdapterLike | null)?.wallet?.accounts;
+  const rawAccounts = (walletAdapter as WalletAdapterLike | null)?.wallet
+    ?.accounts;
   if (!Array.isArray(rawAccounts) || rawAccounts.length === 0) {
     return null;
   }
@@ -99,10 +116,13 @@ function readConnectedWalletChains(
   const accounts = rawAccounts as WalletStandardAccountLike[];
 
   const matchingAccount =
-    accounts.find((account) => account.address === connectedWalletAddress) ?? accounts[0];
+    accounts.find((account) => account.address === connectedWalletAddress) ??
+    accounts[0];
 
   const chains = Array.isArray(matchingAccount?.chains)
-    ? matchingAccount.chains.filter((value): value is string => typeof value === "string")
+    ? matchingAccount.chains.filter(
+        (value): value is string => typeof value === "string",
+      )
     : [];
 
   return chains.length > 0 ? chains : null;
@@ -114,7 +134,9 @@ function isGenericWalletSendError(error: unknown): boolean {
   }
 
   const normalizedMessage = error.message.trim().toLowerCase();
-  return normalizedMessage.length === 0 || normalizedMessage === "unexpected error";
+  return (
+    normalizedMessage.length === 0 || normalizedMessage === "unexpected error"
+  );
 }
 
 function buildWalletSendErrorMessage(
@@ -125,7 +147,10 @@ function buildWalletSendErrorMessage(
 ): string | null {
   const walletName = readWalletName(walletAdapter);
   const expectedChain = getChainForEndpoint(endpoint);
-  const supportedChains = readConnectedWalletChains(walletAdapter, connectedWalletAddress);
+  const supportedChains = readConnectedWalletChains(
+    walletAdapter,
+    connectedWalletAddress,
+  );
 
   if (supportedChains && !supportedChains.includes(expectedChain)) {
     return `Wallet "${walletName}" does not support the selected RPC chain (${expectedChain}). Supported chains: ${supportedChains.join(", ")}. Switch network in the app or use another wallet.`;
@@ -146,7 +171,10 @@ function readApiErrorPayload(payload: unknown): string | null {
   return typeof candidate === "string" ? candidate : null;
 }
 
-function readRequiredBigIntField(input: Record<string, unknown>, key: string): bigint {
+function readRequiredBigIntField(
+  input: Record<string, unknown>,
+  key: string,
+): bigint {
   const value = input[key];
 
   if (typeof value === "bigint") {
@@ -170,7 +198,9 @@ function readCreatePresaleAccountAddress(
   const address = instruction.accounts?.[index]?.address;
 
   if (!address) {
-    throw new Error(`Missing resolved account "${key}" in createPresale instruction.`);
+    throw new Error(
+      `Missing resolved account "${key}" in createPresale instruction.`,
+    );
   }
 
   return address;
@@ -180,14 +210,82 @@ function isCreatePresaleInstruction(instruction: InstructionMeta): boolean {
   return instruction.name === "createPresale";
 }
 
-async function resolveNextCreatePresaleId(mintAddress: string): Promise<string> {
-  const response = await fetch(`/api/presales/next-id?mint=${encodeURIComponent(mintAddress)}`, {
-    method: "GET",
-  });
+function formatLamportsAsSol(lamports: bigint): string {
+  const whole = lamports / LAMPORTS_PER_SOL;
+  const fraction = (lamports % LAMPORTS_PER_SOL)
+    .toString()
+    .padStart(9, "0")
+    .replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
 
-  const payload = (await response.json().catch(() => null)) as
-    | { nextId?: string; error?: string }
-    | null;
+function buildCreatePresaleMemoText(input: Record<string, unknown>): string {
+  const hardCapAmount = readRequiredBigIntField(input, "hardCapAmount");
+  const pricePerToken = readRequiredBigIntField(input, "pricePerToken");
+  const minimumTokensPerAddress = readRequiredBigIntField(
+    input,
+    "minimumTokensPerAddress",
+  );
+  const maximumTokensPerAddress = readRequiredBigIntField(
+    input,
+    "maximumTokensPerAddress",
+  );
+  const tokensInPresale =
+    pricePerToken > 0n ? hardCapAmount / pricePerToken : 0n;
+  const tokenRemainder =
+    pricePerToken > 0n ? hardCapAmount % pricePerToken : hardCapAmount;
+
+  return [
+    "createPresale review",
+    `tokens_in_presale=${tokensInPresale.toString()} raw`,
+    `network_fee_min=${LAMPORTS_PER_SIGNATURE_FEE.toString()} lamports (${formatLamportsAsSol(
+      LAMPORTS_PER_SIGNATURE_FEE,
+    )} SOL)`,
+    "final_fee_check_phantom_popup",
+    "tokens_credited_now=0",
+    `buyer_limit=${minimumTokensPerAddress.toString()}-${maximumTokensPerAddress.toString()} raw`,
+    `hard_cap=${hardCapAmount.toString()} raw_payment`,
+    `price_per_token=${pricePerToken.toString()} raw_payment`,
+    tokenRemainder > 0n
+      ? `warning=hard_cap_not_divisible,remainder=${tokenRemainder.toString()}`
+      : null,
+  ]
+    .filter((entry): entry is string => Boolean(entry))
+    .join(" | ");
+}
+
+function encodeMemoData(
+  text: string,
+): ConstructorParameters<typeof TransactionInstruction>[0]["data"] {
+  return new TextEncoder().encode(text) as ConstructorParameters<
+    typeof TransactionInstruction
+  >[0]["data"];
+}
+
+function buildCreatePresaleMemoInstruction(
+  input: Record<string, unknown>,
+): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: MEMO_PROGRAM_ID,
+    keys: [],
+    data: encodeMemoData(buildCreatePresaleMemoText(input)),
+  });
+}
+
+async function resolveNextCreatePresaleId(
+  mintAddress: string,
+): Promise<string> {
+  const response = await fetch(
+    `/api/presales/next-id?mint=${encodeURIComponent(mintAddress)}`,
+    {
+      method: "GET",
+    },
+  );
+
+  const payload = (await response.json().catch(() => null)) as {
+    nextId?: string;
+    error?: string;
+  } | null;
 
   if (!response.ok || typeof payload?.nextId !== "string") {
     throw new Error(
@@ -204,7 +302,9 @@ async function resolveCreatePresaleValuesFromDatabase(
 ): Promise<InstructionFormValues> {
   const mintValue = values.mint;
   if (typeof mintValue !== "string" || mintValue.trim().length === 0) {
-    throw new Error("Field \"mint\" is required before resolving createPresale ID.");
+    throw new Error(
+      'Field "mint" is required before resolving createPresale ID.',
+    );
   }
 
   const nextId = await resolveNextCreatePresaleId(mintValue.trim());
@@ -222,31 +322,70 @@ async function persistValidatedCreatePresale(
   const payload = {
     id: readRequiredBigIntField(input, "id").toString(),
     mintAddress: readCreatePresaleAccountAddress(sdkInstruction, "mint"),
-    usdcMintAddress: readCreatePresaleAccountAddress(sdkInstruction, "usdcMint"),
+    usdcMintAddress: readCreatePresaleAccountAddress(
+      sdkInstruction,
+      "usdcMint",
+    ),
     adminAddress: readCreatePresaleAccountAddress(sdkInstruction, "admin"),
     ownerAddress: readCreatePresaleAccountAddress(sdkInstruction, "owner"),
-    presaleIndexAddress: readCreatePresaleAccountAddress(sdkInstruction, "presaleIndex"),
-    presaleDetailsAddress: readCreatePresaleAccountAddress(sdkInstruction, "presaleDetails"),
-    presaleAtaAddress: readCreatePresaleAccountAddress(sdkInstruction, "presaleAta"),
-    presaleVaultAddress: readCreatePresaleAccountAddress(sdkInstruction, "presaleVault"),
+    presaleIndexAddress: readCreatePresaleAccountAddress(
+      sdkInstruction,
+      "presaleIndex",
+    ),
+    presaleDetailsAddress: readCreatePresaleAccountAddress(
+      sdkInstruction,
+      "presaleDetails",
+    ),
+    presaleAtaAddress: readCreatePresaleAccountAddress(
+      sdkInstruction,
+      "presaleAta",
+    ),
+    presaleVaultAddress: readCreatePresaleAccountAddress(
+      sdkInstruction,
+      "presaleVault",
+    ),
     presaleUsdcVaultAtaAddress: readCreatePresaleAccountAddress(
       sdkInstruction,
       "presaleUsdcVaultAta",
     ),
-    ownerAtaAddress: readCreatePresaleAccountAddress(sdkInstruction, "ownerAta"),
-    systemProgramAddress: readCreatePresaleAccountAddress(sdkInstruction, "systemProgram"),
-    splTokenProgramAddress: readCreatePresaleAccountAddress(sdkInstruction, "splTokenProgram"),
-    tokenProgramAddress: readCreatePresaleAccountAddress(sdkInstruction, "tokenProgram"),
+    ownerAtaAddress: readCreatePresaleAccountAddress(
+      sdkInstruction,
+      "ownerAta",
+    ),
+    systemProgramAddress: readCreatePresaleAccountAddress(
+      sdkInstruction,
+      "systemProgram",
+    ),
+    splTokenProgramAddress: readCreatePresaleAccountAddress(
+      sdkInstruction,
+      "splTokenProgram",
+    ),
+    tokenProgramAddress: readCreatePresaleAccountAddress(
+      sdkInstruction,
+      "tokenProgram",
+    ),
     associatedTokenProgramAddress: readCreatePresaleAccountAddress(
       sdkInstruction,
       "associatedTokenProgram",
     ),
-    startingUnixTimestamp: readRequiredBigIntField(input, "startingUnixTimestamp").toString(),
-    endUnixTimestamp: readRequiredBigIntField(input, "endUnixTimestamp").toString(),
+    startingUnixTimestamp: readRequiredBigIntField(
+      input,
+      "startingUnixTimestamp",
+    ).toString(),
+    endUnixTimestamp: readRequiredBigIntField(
+      input,
+      "endUnixTimestamp",
+    ).toString(),
     softCapAmount: readRequiredBigIntField(input, "softCapAmount").toString(),
     hardCapAmount: readRequiredBigIntField(input, "hardCapAmount").toString(),
-    minimumTokensPerAddress: readRequiredBigIntField(input, "minimumTokensPerAddress").toString(),
-    maximumTokensPerAddress: readRequiredBigIntField(input, "maximumTokensPerAddress").toString(),
+    minimumTokensPerAddress: readRequiredBigIntField(
+      input,
+      "minimumTokensPerAddress",
+    ).toString(),
+    maximumTokensPerAddress: readRequiredBigIntField(
+      input,
+      "maximumTokensPerAddress",
+    ).toString(),
     pricePerToken: readRequiredBigIntField(input, "pricePerToken").toString(),
     txSignature: signature,
   };
@@ -262,7 +401,8 @@ async function persistValidatedCreatePresale(
   if (!response.ok) {
     const responseBody = await response.json().catch(() => null);
     throw new Error(
-      readApiErrorPayload(responseBody) ?? "Failed to persist createPresale in database.",
+      readApiErrorPayload(responseBody) ??
+        "Failed to persist createPresale in database.",
     );
   }
 }
@@ -317,8 +457,13 @@ export function useSendTransaction() {
 
         const sdkInstruction = await instructionBuilder(input);
         const web3Instruction = sdkInstructionToWeb3Instruction(sdkInstruction);
-        const transaction = new Transaction().add(web3Instruction);
+        const transaction = new Transaction();
 
+        if (isCreatePresaleInstruction(instruction)) {
+          transaction.add(buildCreatePresaleMemoInstruction(input));
+        }
+
+        transaction.add(web3Instruction);
         transaction.feePayer = publicKey;
 
         const { blockhash, lastValidBlockHeight } =
@@ -355,7 +500,10 @@ export function useSendTransaction() {
           }
         }
 
-        const diagnostics = await fetchTransactionDiagnostics(connection, signature);
+        const diagnostics = await fetchTransactionDiagnostics(
+          connection,
+          signature,
+        );
 
         setExecution({
           status: "success",
@@ -372,13 +520,12 @@ export function useSendTransaction() {
         return signature;
       } catch (error) {
         const decodedError = decodeProgramError(error);
-        const walletSendErrorMessage =
-          buildWalletSendErrorMessage(
-            error,
-            wallet?.adapter ?? null,
-            publicKey.toBase58(),
-            connection.rpcEndpoint,
-          );
+        const walletSendErrorMessage = buildWalletSendErrorMessage(
+          error,
+          wallet?.adapter ?? null,
+          publicKey.toBase58(),
+          connection.rpcEndpoint,
+        );
         const effectiveErrorMessage =
           walletSendErrorMessage ??
           decodedError.userMessage ??
