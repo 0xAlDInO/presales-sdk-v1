@@ -143,6 +143,7 @@ function buildWalletSendErrorMessage(
   }
 
   if (isGenericWalletSendError(error)) {
+    console.error(`[useSendTransaction] Generic wallet error for ${walletName}:`, error);
     return `Wallet "${walletName}" failed to send the transaction on ${expectedChain}. Check wallet approval popup, selected network, and SOL balance for fees.`;
   }
 
@@ -191,6 +192,13 @@ function parseCreatePresaleAccounts(
 
 function isCreatePresaleInstruction(instruction: InstructionMeta): boolean {
   return instruction.name === "createPresale";
+}
+
+function isBuyTokensInstruction(instruction: InstructionMeta): boolean {
+  return (
+    instruction.name === "buyTokensWithSol" ||
+    instruction.name === "buyTokensWithUsdc"
+  );
 }
 
 function formatLamportsAsSol(lamports: bigint): string {
@@ -252,6 +260,42 @@ function buildCreatePresaleMemoInstruction(
     programId: MEMO_PROGRAM_ID,
     keys: [],
     data: encodeMemoData(buildCreatePresaleMemoText(input)),
+  });
+}
+
+function buildBuyTokensMemoText(
+  instructionName: string,
+  input: Record<string, unknown>,
+): string {
+  const tokensAmount = readRequiredBigIntField(input, "tokensAmount");
+  const isSol = instructionName === "buyTokensWithSol";
+
+  return [
+    `${instructionName} review`,
+    `buying_tokens=${tokensAmount.toString()} raw`,
+    `payment_method=${isSol ? "SOL" : "USDC"}`,
+    "check_token_balance_after_tx",
+  ].join(" | ");
+}
+
+function buildBuyTokensMemoInstruction(
+  instructionName: string,
+  input: Record<string, unknown>,
+): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: MEMO_PROGRAM_ID,
+    keys: [],
+    data: encodeMemoData(buildBuyTokensMemoText(instructionName, input)),
+  });
+}
+
+function buildGenericMemoInstruction(
+  instructionName: string,
+): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: MEMO_PROGRAM_ID,
+    keys: [],
+    data: encodeMemoData(`${instructionName} via Presales Dashboard`),
   });
 }
 
@@ -413,6 +457,10 @@ export function useSendTransaction() {
 
         if (isCreatePresaleInstruction(instruction)) {
           transaction.add(buildCreatePresaleMemoInstruction(input));
+        } else if (isBuyTokensInstruction(instruction)) {
+          transaction.add(buildBuyTokensMemoInstruction(instruction.name, input));
+        } else {
+          transaction.add(buildGenericMemoInstruction(instruction.name));
         }
 
         transaction.add(web3Instruction);

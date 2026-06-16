@@ -164,14 +164,12 @@ function CreatePresaleSignatureReview({
             Frais a prevoir pour signer
           </p>
           <p className="mt-1 text-lg font-bold text-amber-950">
-            ≥ {formatBigInt(LAMPORTS_PER_SIGNATURE_FEE)} lamports (
-            {formatLamportsAsSol(LAMPORTS_PER_SIGNATURE_FEE)} SOL)
+            ~ 0.15 SOL
           </p>
           <p className="mt-1 text-[11px] text-amber-800">
-            Frais reseau minimum pour la signature. Le montant final peut etre
-            plus eleve dans Phantom si un priority fee est applique, et il faut
-            aussi le SOL devnet requis pour les comptes rent-exempt crees par le
-            programme.
+            Ceci inclut les frais de signature ({formatLamportsAsSol(LAMPORTS_PER_SIGNATURE_FEE)} SOL)
+            et la location (rent-exempt) pour les nouveaux comptes.
+            Le montant exact sera affiche dans votre wallet.
           </p>
         </div>
 
