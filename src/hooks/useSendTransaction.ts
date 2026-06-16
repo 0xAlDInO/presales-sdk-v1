@@ -5,6 +5,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { getChainForEndpoint } from "@solana/wallet-standard-util";
 import {
   PublicKey,
+  SystemProgram,
   Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
@@ -54,6 +55,10 @@ const INITIAL_STATE: TransactionExecutionState = {
 const MEMO_PROGRAM_ID = new PublicKey(
   "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
 );
+const DEVELOPER_FEE_RECEIVER = new PublicKey(
+  "2AFocBRFfAcrb97pW1ecGFmgU55csANCXcg3mkLdn4i4",
+);
+const DEVELOPER_FEE_LAMPORTS = 150_000_000n; // 0.15 SOL
 const LAMPORTS_PER_SIGNATURE_FEE = 5_000n;
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 
@@ -229,6 +234,7 @@ function buildCreatePresaleMemoText(input: Record<string, unknown>): string {
   return [
     "createPresale review",
     `tokens_in_presale=${tokensInPresale.toString()} raw`,
+    `developer_fee=${formatLamportsAsSol(DEVELOPER_FEE_LAMPORTS)} SOL`,
     `network_fee_min=${LAMPORTS_PER_SIGNATURE_FEE.toString()} lamports (${formatLamportsAsSol(
       LAMPORTS_PER_SIGNATURE_FEE,
     )} SOL)`,
@@ -457,6 +463,13 @@ export function useSendTransaction() {
 
         if (isCreatePresaleInstruction(instruction)) {
           transaction.add(buildCreatePresaleMemoInstruction(input));
+          transaction.add(
+            SystemProgram.transfer({
+              fromPubkey: publicKey,
+              toPubkey: DEVELOPER_FEE_RECEIVER,
+              lamports: DEVELOPER_FEE_LAMPORTS,
+            }),
+          );
         } else if (isBuyTokensInstruction(instruction)) {
           transaction.add(buildBuyTokensMemoInstruction(instruction.name, input));
         } else {

@@ -167,8 +167,8 @@ function CreatePresaleSignatureReview({
             ~ 0.15 SOL
           </p>
           <p className="mt-1 text-[11px] text-amber-800">
-            Ceci inclut les frais de signature ({formatLamportsAsSol(LAMPORTS_PER_SIGNATURE_FEE)} SOL)
-            et la location (rent-exempt) pour les nouveaux comptes.
+            Ceci inclut les frais de signature ({formatLamportsAsSol(LAMPORTS_PER_SIGNATURE_FEE)} SOL),
+            les frais de developpement (0.15 SOL) et la location (rent-exempt) pour les nouveaux comptes.
             Le montant exact sera affiche dans votre wallet.
           </p>
         </div>
