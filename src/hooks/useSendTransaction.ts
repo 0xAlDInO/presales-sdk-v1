@@ -8,6 +8,7 @@ import {
   Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
+import { parseCreatePresaleInstruction } from "@/generated/instructions";
 
 import { buildInstructionInput } from "@/lib/instruction-values";
 import {
@@ -56,25 +57,10 @@ const MEMO_PROGRAM_ID = new PublicKey(
 const LAMPORTS_PER_SIGNATURE_FEE = 5_000n;
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 
-const CREATE_PRESALE_ACCOUNT_INDEX = {
-  mint: 0,
-  usdcMint: 1,
-  admin: 2,
-  owner: 3,
-  presaleIndex: 4,
-  presaleDetails: 5,
-  presaleAta: 6,
-  presaleVault: 7,
-  presaleUsdcVaultAta: 8,
-  ownerAta: 9,
-  systemProgram: 10,
-  splTokenProgram: 11,
-  tokenProgram: 12,
-  associatedTokenProgram: 13,
-} as const;
-
 type SdkInstructionLike = {
-  accounts?: ReadonlyArray<{ address: string }>;
+  programAddress: string;
+  accounts?: ReadonlyArray<{ address: string; role: number }>;
+  data?: Uint8Array;
 };
 
 type WalletStandardAccountLike = {
@@ -190,20 +176,17 @@ function readRequiredBigIntField(
   throw new Error(`CreatePresale input field "${key}" must be an integer.`);
 }
 
-function readCreatePresaleAccountAddress(
+function parseCreatePresaleAccounts(
   instruction: SdkInstructionLike,
-  key: keyof typeof CREATE_PRESALE_ACCOUNT_INDEX,
-): string {
-  const index = CREATE_PRESALE_ACCOUNT_INDEX[key];
-  const address = instruction.accounts?.[index]?.address;
+): Record<string, string> {
+  const web3Instruction = sdkInstructionToWeb3Instruction(instruction as any);
+  const parsed = parseCreatePresaleInstruction(web3Instruction as any);
 
-  if (!address) {
-    throw new Error(
-      `Missing resolved account "${key}" in createPresale instruction.`,
-    );
+  const accounts: Record<string, string> = {};
+  for (const [key, meta] of Object.entries(parsed.accounts)) {
+    accounts[key] = (meta as any).pubkey.toBase58();
   }
-
-  return address;
+  return accounts;
 }
 
 function isCreatePresaleInstruction(instruction: InstructionMeta): boolean {
@@ -319,55 +302,24 @@ async function persistValidatedCreatePresale(
   sdkInstruction: SdkInstructionLike,
   signature: string,
 ): Promise<void> {
+  const accounts = parseCreatePresaleAccounts(sdkInstruction);
+
   const payload = {
     id: readRequiredBigIntField(input, "id").toString(),
-    mintAddress: readCreatePresaleAccountAddress(sdkInstruction, "mint"),
-    usdcMintAddress: readCreatePresaleAccountAddress(
-      sdkInstruction,
-      "usdcMint",
-    ),
-    adminAddress: readCreatePresaleAccountAddress(sdkInstruction, "admin"),
-    ownerAddress: readCreatePresaleAccountAddress(sdkInstruction, "owner"),
-    presaleIndexAddress: readCreatePresaleAccountAddress(
-      sdkInstruction,
-      "presaleIndex",
-    ),
-    presaleDetailsAddress: readCreatePresaleAccountAddress(
-      sdkInstruction,
-      "presaleDetails",
-    ),
-    presaleAtaAddress: readCreatePresaleAccountAddress(
-      sdkInstruction,
-      "presaleAta",
-    ),
-    presaleVaultAddress: readCreatePresaleAccountAddress(
-      sdkInstruction,
-      "presaleVault",
-    ),
-    presaleUsdcVaultAtaAddress: readCreatePresaleAccountAddress(
-      sdkInstruction,
-      "presaleUsdcVaultAta",
-    ),
-    ownerAtaAddress: readCreatePresaleAccountAddress(
-      sdkInstruction,
-      "ownerAta",
-    ),
-    systemProgramAddress: readCreatePresaleAccountAddress(
-      sdkInstruction,
-      "systemProgram",
-    ),
-    splTokenProgramAddress: readCreatePresaleAccountAddress(
-      sdkInstruction,
-      "splTokenProgram",
-    ),
-    tokenProgramAddress: readCreatePresaleAccountAddress(
-      sdkInstruction,
-      "tokenProgram",
-    ),
-    associatedTokenProgramAddress: readCreatePresaleAccountAddress(
-      sdkInstruction,
-      "associatedTokenProgram",
-    ),
+    mintAddress: accounts.mint,
+    usdcMintAddress: accounts.usdcMint,
+    adminAddress: accounts.admin,
+    ownerAddress: accounts.owner,
+    presaleIndexAddress: accounts.presaleIndex,
+    presaleDetailsAddress: accounts.presaleDetails,
+    presaleAtaAddress: accounts.presaleAta,
+    presaleVaultAddress: accounts.presaleVault,
+    presaleUsdcVaultAtaAddress: accounts.presaleUsdcVaultAta,
+    ownerAtaAddress: accounts.ownerAta,
+    systemProgramAddress: accounts.systemProgram,
+    splTokenProgramAddress: accounts.splTokenProgram,
+    tokenProgramAddress: accounts.tokenProgram,
+    associatedTokenProgramAddress: accounts.associatedTokenProgram,
     startingUnixTimestamp: readRequiredBigIntField(
       input,
       "startingUnixTimestamp",
@@ -484,6 +436,7 @@ export function useSendTransaction() {
           "confirmed",
         );
 
+        let persistError: Error | null = null;
         if (isCreatePresaleInstruction(instruction)) {
           try {
             await persistValidatedCreatePresale(
@@ -491,12 +444,9 @@ export function useSendTransaction() {
               sdkInstruction as SdkInstructionLike,
               signature,
             );
-          } catch (persistError) {
-            throw new Error(
-              `Transaction confirmed (${signature}) but database save failed: ${toErrorMessage(
-                persistError,
-              )}`,
-            );
+          } catch (e) {
+            persistError = e as Error;
+            console.error("Database persistence failed:", e);
           }
         }
 
@@ -506,10 +456,14 @@ export function useSendTransaction() {
         );
 
         setExecution({
-          status: "success",
+          status: persistError ? "error" : "success",
           instructionName: instruction.displayName,
           signature,
-          error: null,
+          error: persistError
+            ? `Transaction confirmed (${signature}) but database save failed: ${toErrorMessage(
+                persistError,
+              )}`
+            : null,
           customErrorCode: null,
           customErrorHex: null,
           customErrorMessage: null,
