@@ -254,9 +254,17 @@ export function InstructionFormCard({
   isPending,
   onExecute,
 }: InstructionFormCardProps) {
-  const [values, setValues] = useState<InstructionFormValues>(() =>
-    createInitialValues(instruction.fields),
-  );
+  const [values, setValues] = useState<InstructionFormValues>(() => {
+    const initial = createInitialValues(instruction.fields);
+    // Auto-fill Devnet constants
+    if (initial.usdcMint === "") {
+      initial.usdcMint = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+    }
+    if (initial.solUsdPriceUpdate === "") {
+      initial.solUsdPriceUpdate = "7UVimBoxmYdtS9vS9UAg6zGAsTfBN8EunK8B1wNwnEZY";
+    }
+    return initial;
+  });
 
   const isCreatePresale = instruction.name === "createPresale";
   const createPresaleIdBlockReason = useMemo(() => {
