@@ -9,14 +9,17 @@ import type {
 } from "@/types/instruction";
 
 const INSTRUCTIONS_DIR = path.join(process.cwd(), "src", "generated", "instructions");
-const FIELD_PATTERN = /(?:^|\n)\s*(\w+)(\?)?:\s*([^;]+);/g;
+const FIELD_PATTERN = /\s*(\w+)(\?)?:\s*([^;]+);/g;
 
 function extractTypeBlock(source: string, typeName: string): string | null {
   // Handles generic defaults like `T extends string = string` before the final `= { ... }`.
   const match = source.match(
-    new RegExp(`export type ${typeName}[\\s\\S]*?=\\s*\\{([\\s\\S]*?)\\n\\};?`),
+    new RegExp(`export type ${typeName}[\\s\\S]*?=\\s*\\{([\\s\\S]*?)\\};?`),
   );
-  return match?.[1] ?? null;
+  if (!match) return null;
+
+  // Remove comments from the block to avoid matching fields inside comments
+  return match[1].replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");
 }
 
 function toPascalCase(value: string): string {
