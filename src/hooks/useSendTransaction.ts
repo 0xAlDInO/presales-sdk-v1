@@ -483,6 +483,22 @@ export function useSendTransaction() {
           await connection.getLatestBlockhash("confirmed");
         transaction.recentBlockhash = blockhash;
 
+        // Proactive RPC simulation to extract precise on-chain custom error messages before wallet interception
+        try {
+          const simulation = await connection.simulateTransaction(transaction);
+          if (simulation.value.err) {
+            const logs = simulation.value.logs ?? [];
+            const errorObj = new Error(`Transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
+            (errorObj as any).logs = logs;
+            throw errorObj;
+          }
+        } catch (simError) {
+          console.warn("[useSendTransaction] Proactive simulation caught error:", simError);
+          if (simError instanceof Error && (simError as any).logs) {
+            throw simError;
+          }
+        }
+
         signature = await sendTransaction(transaction, connection, {
           preflightCommitment: "confirmed",
           skipPreflight: false,
