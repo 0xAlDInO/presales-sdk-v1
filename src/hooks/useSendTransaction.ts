@@ -185,12 +185,20 @@ function readRequiredBigIntField(
 function parseCreatePresaleAccounts(
   instruction: SdkInstructionLike,
 ): Record<string, string> {
-  const web3Instruction = sdkInstructionToWeb3Instruction(instruction as any);
-  const parsed = parseCreatePresaleInstruction(web3Instruction as any);
+  const kitInstruction = {
+    programAddress: instruction.programAddress,
+    accounts: (instruction.accounts ?? []).map((acc) => ({
+      address: acc.address,
+      role: acc.role,
+    })),
+    data: instruction.data ?? new Uint8Array(),
+  };
+
+  const parsed = parseCreatePresaleInstruction(kitInstruction as any);
 
   const accounts: Record<string, string> = {};
   for (const [key, meta] of Object.entries(parsed.accounts)) {
-    accounts[key] = (meta as any).pubkey.toBase58();
+    accounts[key] = (meta as any).address;
   }
   return accounts;
 }
@@ -215,7 +223,10 @@ function formatLamportsAsSol(lamports: bigint): string {
   return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 
-function buildCreatePresaleMemoText(input: Record<string, unknown>): string {
+function buildCreatePresaleMemoText(
+  input: Record<string, unknown>,
+  feeLamports: bigint,
+): string {
   const hardCapAmount = readRequiredBigIntField(input, "hardCapAmount");
   const pricePerToken = readRequiredBigIntField(input, "pricePerToken");
   const minimumTokensPerAddress = readRequiredBigIntField(
@@ -234,7 +245,7 @@ function buildCreatePresaleMemoText(input: Record<string, unknown>): string {
   return [
     "createPresale review",
     `tokens_in_presale=${tokensInPresale.toString()} raw`,
-    `developer_fee=${formatLamportsAsSol(DEVELOPER_FEE_LAMPORTS)} SOL`,
+    `developer_fee=${formatLamportsAsSol(feeLamports)} SOL`,
     `network_fee_min=${LAMPORTS_PER_SIGNATURE_FEE.toString()} lamports (${formatLamportsAsSol(
       LAMPORTS_PER_SIGNATURE_FEE,
     )} SOL)`,
@@ -261,11 +272,33 @@ function encodeMemoData(
 
 function buildCreatePresaleMemoInstruction(
   input: Record<string, unknown>,
+  feeLamports: bigint,
 ): TransactionInstruction {
   return new TransactionInstruction({
     programId: MEMO_PROGRAM_ID,
     keys: [],
-    data: encodeMemoData(buildCreatePresaleMemoText(input)),
+    data: encodeMemoData(buildCreatePresaleMemoText(input, feeLamports)),
+  });
+}
+
+function buildCreateAssociatedTokenAccountInstruction(
+  payer: PublicKey,
+  associatedToken: PublicKey,
+  owner: PublicKey,
+  mint: PublicKey,
+): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: associatedToken, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: false, isWritable: false },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"), isSigner: false, isWritable: false },
+      { pubkey: new PublicKey("SysvarRent111111111111111111111111111111111"), isSigner: false, isWritable: false },
+    ],
+    data: Buffer.alloc(0),
   });
 }
 
@@ -461,15 +494,52 @@ export function useSendTransaction() {
         const web3Instruction = sdkInstructionToWeb3Instruction(sdkInstruction);
         const transaction = new Transaction();
 
-        if (isCreatePresaleInstruction(instruction)) {
-          transaction.add(buildCreatePresaleMemoInstruction(input));
-          transaction.add(
-            SystemProgram.transfer({
-              fromPubkey: publicKey,
-              toPubkey: DEVELOPER_FEE_RECEIVER,
-              lamports: DEVELOPER_FEE_LAMPORTS,
-            }),
-          );
+        const isCreatePresale = isCreatePresaleInstruction(instruction);
+        const isMainnet = !connection.rpcEndpoint.includes("devnet") &&
+                          !connection.rpcEndpoint.includes("testnet") &&
+                          !connection.rpcEndpoint.includes("local") &&
+                          !connection.rpcEndpoint.includes("127.0.0.1");
+
+        const feeLamports = isCreatePresale && isMainnet ? DEVELOPER_FEE_LAMPORTS : 0n;
+
+        if (isCreatePresale) {
+          transaction.add(buildCreatePresaleMemoInstruction(input, feeLamports));
+          if (feeLamports > 0n) {
+            transaction.add(
+              SystemProgram.transfer({
+                fromPubkey: publicKey,
+                toPubkey: DEVELOPER_FEE_RECEIVER,
+                lamports: feeLamports,
+              }),
+            );
+          }
+
+          // Dynamically check and pre-initialize owner's ATA if it does not exist
+          try {
+            const accounts = parseCreatePresaleAccounts(sdkInstruction as SdkInstructionLike);
+            if (accounts.ownerAta && accounts.owner && accounts.mint) {
+              const ownerAtaPubkey = new PublicKey(accounts.ownerAta);
+              const ownerPubkey = new PublicKey(accounts.owner);
+              const mintPubkey = new PublicKey(accounts.mint);
+
+              const accountInfo = await connection.getAccountInfo(ownerAtaPubkey, "confirmed");
+              if (!accountInfo) {
+                console.log(`[useSendTransaction] Owner ATA (${accounts.ownerAta}) does not exist. Prepending initialization instruction.`);
+                transaction.add(
+                  buildCreateAssociatedTokenAccountInstruction(
+                    publicKey,
+                    ownerAtaPubkey,
+                    ownerPubkey,
+                    mintPubkey,
+                  )
+                );
+              } else {
+                console.log(`[useSendTransaction] Owner ATA (${accounts.ownerAta}) already initialized.`);
+              }
+            }
+          } catch (ataError) {
+            console.error("[useSendTransaction] Error checking/resolving owner ATA:", ataError);
+          }
         } else if (isBuyTokensInstruction(instruction)) {
           transaction.add(buildBuyTokensMemoInstruction(instruction.name, input));
         } else {
