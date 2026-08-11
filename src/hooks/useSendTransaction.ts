@@ -558,6 +558,7 @@ export function useSendTransaction() {
           logs: decodedError.logs,
           diagnostics: null,
         });
+        console.error('[useSendTransaction] Raw error:', error, JSON.stringify(error, Object.getOwnPropertyNames(error)));
         throw error;
       }
     },
