@@ -543,6 +543,7 @@ export function useSendTransaction() {
         );
         const effectiveErrorMessage =
           walletSendErrorMessage ??
+          (error instanceof Error ? error.message : null) ??
           decodedError.userMessage ??
           toErrorMessage(error);
 
