@@ -220,7 +220,7 @@ function formatLamportsAsSol(lamports: bigint): string {
     .toString()
     .padStart(9, "0")
     .replace(/0+$/, "");
-  return fraction ? `${whole}.${fraction}` : whole.toString();
+  return fraction ? `${whole},${fraction}` : whole.toString();
 }
 
 function buildCreatePresaleMemoText(

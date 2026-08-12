@@ -45,13 +45,14 @@ function parseBoolean(value: string | boolean): boolean {
 }
 
 function parseNumberAsBigInt(value: string): bigint {
-  const trimmed = value.trim();
-  if (!/^-?\d+$/.test(trimmed)) {
+  const normalized = value.trim().replace(",", ".");
+  if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
     throw new InstructionInputError(
       `Expected integer number, received "${value}".`,
     );
   }
-  return BigInt(trimmed);
+  const floatValue = parseFloat(normalized);
+  return BigInt(Math.round(floatValue));
 }
 
 function parsePublicKey(value: string): string {

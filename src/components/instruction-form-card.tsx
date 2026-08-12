@@ -60,15 +60,23 @@ function readStringValue(values: InstructionFormValues, key: string): string {
 }
 
 function parseUnsignedInteger(value: string): bigint | null {
-  if (!/^\d+$/.test(value)) {
+  const normalized = value.trim().replace(",", ".");
+  if (!/^\d+(\.\d+)?$/.test(normalized)) {
     return null;
   }
 
-  return BigInt(value);
+  const floatValue = parseFloat(normalized);
+  return BigInt(Math.round(floatValue));
 }
 
-function formatBigInt(value: bigint): string {
-  return new Intl.NumberFormat("en-US").format(value);
+function formatNumberOrBigInt(value: number | bigint): string {
+  if (typeof value === "number") {
+    return new Intl.NumberFormat("fr-FR", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(value);
+  }
+  return new Intl.NumberFormat("fr-FR").format(value);
 }
 
 function formatLamportsAsSol(lamports: bigint): string {
@@ -77,7 +85,7 @@ function formatLamportsAsSol(lamports: bigint): string {
     .toString()
     .padStart(9, "0")
     .replace(/0+$/, "");
-  return fraction ? `${whole}.${fraction}` : whole.toString();
+  return fraction ? `${whole},${fraction}` : whole.toString();
 }
 
 function getDerivedTokenAmount(
@@ -88,8 +96,11 @@ function getDerivedTokenAmount(
     return null;
   }
 
+  const scaledTokens = ((capAmount * 100n) + (pricePerToken / 2n)) / pricePerToken;
+  const tokensVal = Number(scaledTokens) / 100;
+
   return {
-    tokens: capAmount / pricePerToken,
+    tokens: tokensVal,
     remainder: capAmount % pricePerToken,
   };
 }
@@ -144,7 +155,7 @@ function CreatePresaleSignatureReview({
           </p>
           <p className="mt-1 text-lg font-bold text-amber-950">
             {hardCapTokens
-              ? `${formatBigInt(hardCapTokens.tokens)} unite(s) token brutes`
+              ? `${formatNumberOrBigInt(hardCapTokens.tokens)} unite(s) token brutes`
               : "A calculer"}
           </p>
           <p className="mt-1 text-[11px] text-amber-800">
@@ -177,7 +188,7 @@ function CreatePresaleSignatureReview({
           <p className="font-semibold text-amber-900">Soft cap equivalent</p>
           <p className="mt-1 text-lg font-bold text-amber-950">
             {softCapTokens
-              ? `${formatBigInt(softCapTokens.tokens)} unite(s) token brutes`
+              ? `${formatNumberOrBigInt(softCapTokens.tokens)} unite(s) token brutes`
               : "A calculer"}
           </p>
           <p className="mt-1 text-[11px] text-amber-800">
@@ -195,7 +206,7 @@ function CreatePresaleSignatureReview({
           <p className="mt-1 text-lg font-bold text-amber-950">
             {minimumTokensPerAddress !== null &&
             maximumTokensPerAddress !== null
-              ? `${formatBigInt(minimumTokensPerAddress)} - ${formatBigInt(
+              ? `${formatNumberOrBigInt(minimumTokensPerAddress)} - ${formatNumberOrBigInt(
                   maximumTokensPerAddress,
                 )} tokens bruts / wallet`
               : "A calculer"}
@@ -203,7 +214,7 @@ function CreatePresaleSignatureReview({
           <p className="mt-1 text-[11px] text-amber-800">
             Cout max par acheteur:{" "}
             {maxBuyerCost !== null
-              ? `${formatBigInt(maxBuyerCost)} unite(s) de paiement brutes`
+              ? `${formatNumberOrBigInt(maxBuyerCost)} unite(s) de paiement brutes`
               : "renseignez maximumTokensPerAddress et pricePerToken"}
             .
           </p>
