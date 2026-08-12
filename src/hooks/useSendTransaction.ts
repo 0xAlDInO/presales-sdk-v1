@@ -495,12 +495,7 @@ export function useSendTransaction() {
         const transaction = new Transaction();
 
         const isCreatePresale = isCreatePresaleInstruction(instruction);
-        const isMainnet = !connection.rpcEndpoint.includes("devnet") &&
-                          !connection.rpcEndpoint.includes("testnet") &&
-                          !connection.rpcEndpoint.includes("local") &&
-                          !connection.rpcEndpoint.includes("127.0.0.1");
-
-        const feeLamports = isCreatePresale && isMainnet ? DEVELOPER_FEE_LAMPORTS : 0n;
+        const feeLamports = isCreatePresale ? DEVELOPER_FEE_LAMPORTS : 0n;
 
         if (isCreatePresale) {
           transaction.add(buildCreatePresaleMemoInstruction(input, feeLamports));
