@@ -58,3 +58,14 @@ CREATE INDEX IF NOT EXISTS idx_presales_owner_address ON presales(owner_address)
 CREATE INDEX IF NOT EXISTS idx_presales_mint_address ON presales(mint_address);
 CREATE INDEX IF NOT EXISTS idx_presales_mint_id_desc ON presales(mint_address, id DESC);
 CREATE INDEX IF NOT EXISTS idx_presales_created_at ON presales(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS app_config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Seed with default developer_fee_lamports if not present
+INSERT INTO app_config (key, value)
+VALUES ('developer_fee_lamports', '150000000')
+ON CONFLICT (key) DO NOTHING;

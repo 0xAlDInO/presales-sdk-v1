@@ -495,7 +495,26 @@ export function useSendTransaction() {
         const transaction = new Transaction();
 
         const isCreatePresale = isCreatePresaleInstruction(instruction);
-        const feeLamports = isCreatePresale ? DEVELOPER_FEE_LAMPORTS : 0n;
+        let feeLamports = 0n;
+
+        if (isCreatePresale) {
+          try {
+            const configRes = await fetch("/api/config");
+            if (configRes.ok) {
+              const configData = await configRes.json();
+              if (configData && typeof configData.developer_fee_lamports === "string") {
+                feeLamports = BigInt(configData.developer_fee_lamports);
+              } else {
+                feeLamports = DEVELOPER_FEE_LAMPORTS;
+              }
+            } else {
+              feeLamports = DEVELOPER_FEE_LAMPORTS;
+            }
+          } catch (configErr) {
+            console.warn("[useSendTransaction] Failed to fetch dynamic developer fee, falling back to default:", configErr);
+            feeLamports = DEVELOPER_FEE_LAMPORTS;
+          }
+        }
 
         if (isCreatePresale) {
           transaction.add(buildCreatePresaleMemoInstruction(input, feeLamports));

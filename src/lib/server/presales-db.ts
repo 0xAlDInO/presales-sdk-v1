@@ -186,3 +186,76 @@ export async function upsertValidatedPresale(record: PersistedPresaleRecord): Pr
     ],
   );
 }
+
+export async function getAppConfig(key: string, defaultValue: string): Promise<string> {
+  const db = getPresalesPool();
+  try {
+    const result = await db.query<{ value: string }>(
+      `SELECT value FROM app_config WHERE key = $1`,
+      [key],
+    );
+    if (result.rows.length > 0) {
+      return result.rows[0].value;
+    }
+  } catch (err: any) {
+    if (err.code === "42P01") { // undefined_table
+      console.log("[presales-db] app_config table not found. Creating and seeding...");
+      try {
+        await db.query(`
+          CREATE TABLE IF NOT EXISTS app_config (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )
+        `);
+        await db.query(`
+          INSERT INTO app_config (key, value)
+          VALUES ('developer_fee_lamports', '150000000')
+          ON CONFLICT (key) DO NOTHING
+        `);
+        const retryResult = await db.query<{ value: string }>(
+          `SELECT value FROM app_config WHERE key = $1`,
+          [key],
+        );
+        if (retryResult.rows.length > 0) {
+          return retryResult.rows[0].value;
+        }
+      } catch (initErr) {
+        console.error("[presales-db] Failed to self-initialize app_config table:", initErr);
+      }
+    } else {
+      console.error("[presales-db] Error querying app_config:", err);
+    }
+  }
+  return defaultValue;
+}
+
+export async function setAppConfig(key: string, value: string): Promise<void> {
+  const db = getPresalesPool();
+  try {
+    await db.query(
+      `
+        INSERT INTO app_config (key, value, updated_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (key)
+        DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+      `,
+      [key, value],
+    );
+  } catch (err: any) {
+    if (err.code === "42P01") {
+      await getAppConfig(key, value);
+      await db.query(
+        `
+          INSERT INTO app_config (key, value, updated_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (key)
+          DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        `,
+        [key, value],
+      );
+    } else {
+      throw err;
+    }
+  }
+}

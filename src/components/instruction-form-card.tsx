@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type {
   InstructionFieldMeta,
@@ -110,6 +110,30 @@ function CreatePresaleSignatureReview({
 }: {
   values: InstructionFormValues;
 }) {
+  const [dbFeeLamports, setDbFeeLamports] = useState<bigint | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/config")
+      .then((res) => {
+        if (res.ok) {
+          return res.json();
+        }
+        throw new Error("Failed to fetch");
+      })
+      .then((data) => {
+        if (active && data && typeof data.developer_fee_lamports === "string") {
+          setDbFeeLamports(BigInt(data.developer_fee_lamports));
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load developer fee config from DB:", err);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const softCapAmount = parseUnsignedInteger(
     readStringValue(values, "softCapAmount"),
   );
@@ -134,6 +158,10 @@ function CreatePresaleSignatureReview({
   const hasAllReviewValues = CREATE_PRESALE_REVIEW_FIELDS.every((fieldName) =>
     /^\d+$/.test(readStringValue(values, fieldName)),
   );
+
+  const smartContractFeeLamports = 150_000_000n; // 0.15 SOL
+  const currentDbFeeLamports = dbFeeLamports !== null ? dbFeeLamports : 150_000_000n;
+  const totalFeeLamports = currentDbFeeLamports + smartContractFeeLamports;
 
   return (
     <div className="space-y-3 rounded-xl border-2 border-amber-300 bg-amber-50 p-4 text-xs text-amber-950 shadow-sm">
@@ -172,15 +200,13 @@ function CreatePresaleSignatureReview({
 
         <div className="rounded-lg border border-amber-200 bg-white/70 p-3">
           <p className="font-semibold text-amber-900">
-            Frais a prevoir pour signer
+            Frais de creation (Contrat + Dev)
           </p>
           <p className="mt-1 text-lg font-bold text-amber-950">
-            ~ 0.15 SOL
+            ~ {formatLamportsAsSol(totalFeeLamports)} SOL
           </p>
           <p className="mt-1 text-[11px] text-amber-800">
-            Ceci inclut les frais de signature ({formatLamportsAsSol(LAMPORTS_PER_SIGNATURE_FEE)} SOL),
-            les frais de developpement (0.15 SOL) et la location (rent-exempt) pour les nouveaux comptes.
-            Le montant exact sera affiche dans votre wallet.
+            Ceci inclut les frais du contrat intelligent (0,15 SOL), les frais de developpement configurables en base de donnees ({formatLamportsAsSol(currentDbFeeLamports)} SOL), la signature ({formatLamportsAsSol(LAMPORTS_PER_SIGNATURE_FEE)} SOL) et les frais de location rent-exempt.
           </p>
         </div>
 
